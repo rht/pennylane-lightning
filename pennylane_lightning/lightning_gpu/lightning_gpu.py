@@ -19,6 +19,7 @@ interfaces with the NVIDIA cuQuantum cuStateVec simulator library for GPU-enable
 
 from warnings import warn
 import numpy as np
+from scipy.sparse import diags
 
 from pennylane_lightning.core.lightning_base import (
     LightningBase,
@@ -202,6 +203,16 @@ if LGPU_CPP_BINARY_AVAILABLE:
         "Prod",
         "SProd",
     }
+
+    class L2Loss(qml.measurements.MeasurementProcess):
+        def __init__(self, target):
+            self.target = target
+
+        def loss(self, *args, **kwargs):
+            return np.linalg.norm(self.target - args[0] ** 2) ** 2
+
+        def __call__(self, *args, **kwargs):
+            return self.loss(*args, **kwargs)
 
     class LightningGPU(LightningBase):  # pylint: disable=too-many-instance-attributes
         """PennyLane Lightning GPU device.
@@ -671,6 +682,18 @@ if LGPU_CPP_BINARY_AVAILABLE:
 
             # Check adjoint diff support
             self._check_adjdiff_supported_operations(tape.operations)
+
+            for i, m in enumerate(tape.measurements):
+                if isinstance(m, L2Loss):
+                    @qml.qnode(self)
+                    def _circuit():
+                        for op in tape.operations:
+                            qml.apply(op)
+                        return qml.probs()
+                    obs = -2 * (m.target - _circuit())
+                    hmat = diags(obs, format="csr")
+                    h = qml.SparseHamiltonian(hmat, range(self.num_wires))
+                    tape.measurements[i] = qml.expval(h)
 
             processed_data = self._process_jacobian_tape(
                 tape, starting_state, use_device_state, self._mpi
