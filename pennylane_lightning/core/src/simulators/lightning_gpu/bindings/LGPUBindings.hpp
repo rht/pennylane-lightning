@@ -151,6 +151,15 @@ void registerBackendClassSpecificBindings(PyClass &pyclass) {
         .def("numQubits", &StateVectorT::getNumQubits)
         .def("dataLength", &StateVectorT::getLength)
         .def("resetGPU", &StateVectorT::initSV)
+	.def(
+            "dotWithBraReal",
+            [](StateVectorT &sv,
+               const StateVectorT &bra) {
+                // Real only
+                return (sv.innerProductWithSV(bra)).x;
+            },
+            "Calculate the dot product of the statevector with another bra "
+            "statevector and take the real value only.")
         .def(
             "apply",
             [](StateVectorT &sv, const std::string &str,
